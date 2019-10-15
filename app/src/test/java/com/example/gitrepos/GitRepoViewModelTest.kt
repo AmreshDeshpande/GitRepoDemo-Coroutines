@@ -1,6 +1,7 @@
 package com.example.gitrepos
 
-import android.arch.core.executor.testing.InstantTaskExecutorRule
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import androidx.lifecycle.LiveData
 import com.example.gitrepos.TestUtility.Companion.getTestGitRepoData
 import com.example.gitrepos.data.*
 import com.example.gitrepos.data.Status.Loading
@@ -9,12 +10,18 @@ import com.example.gitrepos.network.model.GitRepo
 import com.example.gitrepos.util.Constants
 import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.whenever
+import kotlinx.coroutines.*
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runBlockingTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.mockito.Mock
 import org.mockito.junit.MockitoJUnit
+import java.util.concurrent.CountDownLatch
 
 
 class GitRepoViewModelTest {
@@ -29,12 +36,17 @@ class GitRepoViewModelTest {
     @get:Rule
     val taskExecutorRule = InstantTaskExecutorRule()
 
+    private val mainThreadSurrogate = newSingleThreadContext("UI thread")
+    private var liveDataUnderTest: TestObserver<Status>? = null
 
     private lateinit var gitRepoViewModel: GitRepoViewModel
 
     @Before
     fun setUp() {
+        Dispatchers.setMain(mainThreadSurrogate)
         gitRepoViewModel = GitRepoViewModel(dataRepository)
+        liveDataUnderTest = gitRepoViewModel.getGitRepoData()?.testObserver()
+
     }
 
 
@@ -54,19 +66,20 @@ class GitRepoViewModelTest {
     }
 
     @Test
-    fun testViewModelSuccess() {
+    fun testViewModelSuccess() = runBlockingTest {
+        val lock = CountDownLatch(1)
 
+        // Will be launched in the mainThreadSurrogate dispatcher
         val testGitRepoData = getTestGitRepoData()
 
         whenever(dataRepository.getGitRepo(any(), any())).thenAnswer {
             (it.getArgument(0) as (List<GitRepo>?) -> (Unit)).invoke(getTestGitRepoData())
+            lock.countDown()
         }
 
-        val liveDataUnderTest = gitRepoViewModel.getGitRepoData()?.testObserver()
-
         gitRepoViewModel.getGitRepo()
-
-        assertEquals(liveDataUnderTest?.observedValues?.size, 2)
+        lock.await()
+        assertEquals(2, liveDataUnderTest?.observedValues?.size)
 
         //Test success state
         val dataSuccess = liveDataUnderTest?.observedValues?.get(1) as Status
@@ -74,18 +87,19 @@ class GitRepoViewModelTest {
         assertEquals((dataSuccess as Status.Success).gitData, testGitRepoData)
         assertFalse(dataSuccess is Status.Error)
         assertFalse(dataSuccess == Loading)
+
     }
 
     @Test
-    fun testViewModelError() {
-
+    fun testViewModelError() = runBlockingTest {
+        val lock = CountDownLatch(1)
         whenever(dataRepository.getGitRepo(any(), any())).thenAnswer {
             (it.getArgument(1) as (ErrorResponse) -> (Unit)).invoke((ErrorResponse(Throwable())))
+            lock.countDown()
         }
 
-        val liveDataUnderTest = gitRepoViewModel.getGitRepoData()?.testObserver()
-
         gitRepoViewModel.getGitRepo()
+        lock.await()
 
         assertEquals(liveDataUnderTest?.observedValues?.size, 2)
 
@@ -109,5 +123,11 @@ class GitRepoViewModelTest {
         assertFalse(data === Loading)
     }
 
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain() // reset main dispatcher to the original Main dispatcher
+        mainThreadSurrogate.close()
+    }
 }
 

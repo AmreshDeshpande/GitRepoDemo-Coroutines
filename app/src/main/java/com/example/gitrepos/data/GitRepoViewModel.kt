@@ -16,19 +16,15 @@ class GitRepoViewModel(private val dataRepository: DataRepository) : ViewModel()
 
 
     fun getGitRepo() {
-
         status?.value = Status.Loading
-//        viewModelScope.launch{
-//
-//        }
-
-        dataRepository.getGitRepo({ gitRepoList ->
-
-            status?.value = Status.Success(gitRepoList)
-        },
-            { errorResponse ->
-                status?.value = Status.Error(errorResponse)
-            })
+        viewModelScope.launch {
+            dataRepository.getGitRepo({ gitRepoList ->
+                status?.value = Status.Success(gitRepoList)
+            },
+                { errorResponse ->
+                    status?.value = Status.Error(errorResponse)
+                })
+        }
     }
 
 }

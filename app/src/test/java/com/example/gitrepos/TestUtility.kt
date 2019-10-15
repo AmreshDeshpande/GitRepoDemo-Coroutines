@@ -1,8 +1,8 @@
 package com.example.gitrepos
 
-import android.arch.lifecycle.LiveData
-import android.arch.lifecycle.Observer
 import android.util.Log
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import com.example.gitrepos.network.model.GitRepo
 import com.example.gitrepos.network.model.Owner
 
